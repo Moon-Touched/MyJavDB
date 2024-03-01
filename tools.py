@@ -14,6 +14,7 @@ class Movie(Document):
     tags = ListField(StringField())
     uncensored = BooleanField(required=True)
     magnet = StringField(required=True)
+    url = StringField(required=True)
 
 
 class Scraper:
@@ -64,14 +65,24 @@ class Scraper:
             movie_soup = BeautifulSoup(response.text, "html.parser")
         else:
             print("未找到电影网址")
+
+        movie_info: dict = {
+            "番号": "",
+            "标题": "",
+            "演员": [],
+            "标签": [],
+            "是否无码": uncensored,
+            "磁链": "",
+            "网址": movie_url,
+        }
+
         # 抓取信息
         info_panel = movie_soup.find("nav", class_="panel movie-panel-info")
         if info_panel == None:
-            print("未找到影片详情，请检查url")
+            print(f"{movie_url} 未找到影片详情，请检查url")
             return
 
         # 开始抓取
-        movie_info: dict = {"番号": "", "标题": "", "演员": [], "标签": [], "是否无码": uncensored, "磁链": ""}
         cracked = False
         blocks = info_panel.find_all("div", class_="panel-block", recursive=False)
         for block in blocks:
@@ -79,7 +90,11 @@ class Scraper:
                 block_name = block.find("strong").text
 
             if block_name == "番號:":
-                first_code = block.find("span").find("a").text
+                span = block.find("span")
+                if span.find("a"):
+                    first_code = span.find("a").text
+                else:
+                    first_code = span.text
                 last_code = block.find("span").text.split(first_code)[1]
                 movie_info["番号"] = f"{first_code}{last_code}"
 
@@ -141,7 +156,10 @@ class Scraper:
 
         # 获取一共有几页
         pagination = soup.find("ul", class_="pagination-list")
-        total_pages = len(pagination.find_all("li", recursive=False))
+        if not pagination:
+            total_pages = 1
+        else:
+            total_pages = len(pagination.find_all("li", recursive=False))
 
         all_movie_info = []
         # 拼接每页url并获取影片连接
@@ -149,7 +167,7 @@ class Scraper:
             page_url = f"{url}?page={i}"
             response = requests.get(page_url)
             soup = BeautifulSoup(response.text, "html.parser")
-            
+
             # 获取影片列表中的所有条目
             movie_container = soup.find("div", class_="movie-list h cols-4 vcols-8")
             if not movie_container:
@@ -175,14 +193,10 @@ class Scraper:
                 tags=info["标签"],
                 uncensored=info["是否无码"],
                 magnet=info["磁链"],
+                url=info["网址"],
             )
             new_movie.save()
         except NotUniqueError:
             # 如果出现NotUniqueError，说明存在重复条目，此处可以记录日志或者简单跳过
             print(f"出现重复条目{info['番号']}，已跳过。")
         return
-
-
-if __name__ == "__main__":
-    s = Scraper()
-    s.get_favorite_actors(True)

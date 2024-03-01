@@ -16,4 +16,4 @@ scraper = Scraper()
 for actor_name, info in actor_info.items():
     actor_sub_url = info["actor_sub_url"]
     uncensored = info["uncensored"]
-    all_movie_info = scraper.get_actor_movie_info(1.0, actor_sub_url, uncensored, True)
+    all_movie_info = scraper.get_actor_movie_info(0.5, actor_sub_url, uncensored, True)
