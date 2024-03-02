@@ -8,7 +8,7 @@ import requests
 
 
 class Movie(Document):
-    code = StringField(required=True, unique=True)
+    code = StringField(required=True)
     title = StringField(required=True)
     actors = ListField(StringField())
     tags = ListField(StringField())
@@ -18,9 +18,12 @@ class Movie(Document):
 
 
 class Scraper:
-    def get_favorite_actors(
-        self, save_info: bool = False, save_avatar: bool = False, avatar_path: str = ""
-    ) -> dict[str, dict[str, Union[str, bool]]]:
+    def __init__(self, cookie: str = "", time_interval: float = 1) -> None:
+        self.headers: dict = {"Cookie": cookie}
+        self.time_interval: float = time_interval
+        return
+
+    def get_favorite_actors(self, save_info: bool = False, save_avatar: bool = False, avatar_path: str = "") -> dict:
         # 打开收藏演员页面的html
         with open("favourite actors.html", "r", encoding="utf-8") as file:
             html_content = file.read()
@@ -28,34 +31,86 @@ class Scraper:
         # 使用BeautifulSoup解析HTML内容
         soup = BeautifulSoup(html_content, "html.parser")
 
-        # 获取演员信息框
+        # 获取收藏演员信息框
         actor_boxes = soup.find_all("div", class_="box actor-box")
-        actor_info: dict[str, dict[str, Union[str, bool]]] = {}
+        all_actor_info: dict = {}
         for box in actor_boxes:
-            actor_name = box.find("strong").text
             actor_sub_url = box.find("a")["href"]
-            if box.find("span") != None:
-                uncensored = True
-                actor_name = f"{actor_name}_无码"
-            else:
-                uncensored = False
-            actor_info[actor_name] = {"actor_sub_url": actor_sub_url, "uncensored": uncensored}
-            # 如果需要就保存头像，头像需要设置保存路径
-            if save_avatar:
-                # 检查头像存储路径
-                if avatar_path == "":
-                    raise ValueError("avatar_path 不能为空")
-                avatar_url = box.find("img")["src"]
-                response = requests.get(avatar_url)
-                if response.status_code == 200:
-                    with open(f"{avatar_path}/{actor_name}.jpg", "wb") as file:
-                        file.write(response.content)
+            actor_url = f"https://javdb.com{actor_sub_url}"
+            actor_info = self.get_actor_info(actor_url, save_avatar, avatar_path)
+            all_actor_info.update(actor_info)
 
         # 如果需要就保存为json格式，之后可以从文件中读取。
         if save_info:
             with open("actor_info.json", "w", encoding="utf-8") as file:
-                json.dump(actor_info, file, ensure_ascii=False, indent=4)
+                json.dump(all_actor_info, file, ensure_ascii=False, indent=4)
 
+        return all_actor_info
+
+    def get_actor_info(self, actor_url: str, save_avatar: bool = False, avatar_path: str = ""):
+        response = requests.get(actor_url)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, "html.parser")
+        else:
+            print("未找到演员网址")
+
+        actor_info: dict = {}
+        # 获取名字，是否无码
+        actor_name_text = soup.find("span", class_="actor-section-name").text.split(", ")
+        actor_name = actor_name_text[0]
+        second_name = actor_name_text[0]
+        if actor_name_text[-1][-4:] == "(無碼)":
+            uncensored = True
+            second_name = actor_name[:-4]
+        else:
+            uncensored = False
+
+        # 有些有多个名字，在获取一个备用
+        if len(actor_name_text) > 1:
+            second_name = actor_name_text[1]
+
+        # 获取一共有多少部
+        total_movies = 0
+        i = 1
+        while True:
+            page_url = f"{actor_url}?page={i}"
+            response = requests.get(page_url)
+            soup = BeautifulSoup(response.text, "html.parser")
+            if soup.find("div", class_="empty-message"):
+                break
+
+            # 获取影片列表中的所有条目
+            movie_container = soup.find("div", class_="movie-list h cols-4 vcols-8")
+            if not movie_container:
+                movie_container = soup.find("div", class_="movie-list h cols-4 vcols-5")
+
+            movie_list = movie_container.find_all("div", class_="item", recursive=False)
+            n = len(movie_list)
+            total_movies = total_movies + n
+            i = i + 1
+            time.sleep(self.time_interval)
+
+        actor_info[actor_name] = {
+            "second_name": second_name,
+            "actor_url": actor_url,
+            "uncensored": uncensored,
+            "total_movies": total_movies,
+        }
+        # 如果需要就保存头像，头像需要设置保存路径
+        if save_avatar:
+            # 检查头像存储路径
+            if avatar_path == "":
+                raise ValueError("avatar_path 不能为空")
+            style = soup.find("span", class_="avatar")["style"]
+            start = style.find("url(") + 4  # 加4是因为要跳过"url("这四个字符
+            end = style.find(")", start)
+            avatar_url = style[start:end]
+
+            response = requests.get(avatar_url)
+            if response.status_code == 200:
+                with open(f"{avatar_path}/{actor_name}.jpg", "wb") as file:
+                    file.write(response.content)
+        print(actor_info)
         return actor_info
 
     # 获取给定影片详情页url的信息
@@ -66,6 +121,19 @@ class Scraper:
         else:
             print("未找到电影网址")
 
+        # FC2需要登陆才能查看，如果获取不到就尝试使用cookie登录
+        info_panel = movie_soup.find("nav", class_="panel movie-panel-info")
+        if info_panel == None:
+            with requests.Session() as session:
+                if self.headers["Cookie"] != "":
+                    response = session.get(movie_url, headers=self.headers)
+                    movie_soup = BeautifulSoup(response.text, "html.parser")
+                    info_panel = movie_soup.find("nav", class_="panel movie-panel-info")
+                # 如果还获取不到
+                if info_panel == None:
+                    print(f"{movie_url} 未找到影片详情，请检查url")
+                    return
+
         movie_info: dict = {
             "番号": "",
             "标题": "",
@@ -75,12 +143,6 @@ class Scraper:
             "磁链": "",
             "网址": movie_url,
         }
-
-        # 抓取信息
-        info_panel = movie_soup.find("nav", class_="panel movie-panel-info")
-        if info_panel == None:
-            print(f"{movie_url} 未找到影片详情，请检查url")
-            return
 
         # 开始抓取
         cracked = False
@@ -141,62 +203,101 @@ class Scraper:
 
     # 获取一个演员的所有影片
     def get_actor_movie_info(
-        self, time_interval: float, actor_sub_url: str, uncensored: bool, to_database: bool = False
+        self,  actor_url: str, uncensored: bool, to_database: bool = False
     ) -> list[dict]:
-        # 拼接演员页面url(同时也是演员页面首页)
+
         base_url = "https://javdb.com"
-        url = f"{base_url}{actor_sub_url}"
 
         # 获取html
-        response = requests.get(url)
+        response = requests.get(actor_url)
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, "html.parser")
         else:
-            print("未找到女优网址")
-
-        # 获取一共有几页
-        pagination = soup.find("ul", class_="pagination-list")
-        if not pagination:
-            total_pages = 1
-        else:
-            total_pages = len(pagination.find_all("li", recursive=False))
+            print("未找到演员网址")
 
         all_movie_info = []
+        i = 1
         # 拼接每页url并获取影片连接
-        for i in range(1, total_pages + 1):
-            page_url = f"{url}?page={i}"
+        while True:
+            page_url = f"{actor_url}?page={i}"
             response = requests.get(page_url)
             soup = BeautifulSoup(response.text, "html.parser")
+            if soup.find("div", class_="empty-message"):
+                break
 
             # 获取影片列表中的所有条目
             movie_container = soup.find("div", class_="movie-list h cols-4 vcols-8")
             if not movie_container:
                 movie_container = soup.find("div", class_="movie-list h cols-4 vcols-5")
+
             movie_list = movie_container.find_all("div", class_="item", recursive=False)
 
             for movie in movie_list:
                 # 获取电影详情页面
                 movie_sub_url = movie.find("a")["href"]
                 movie_url = f"{base_url}{movie_sub_url}"
+
+                exist_movie = Movie.objects(url=movie_url).first()
+                if exist_movie:
+                    #print(f"出现重复条目{exist_movie.code}，已跳过。")
+                    continue
+
                 all_movie_info.append(self.get_one_movie_info(movie_url, uncensored, to_database))
-                time.sleep(time_interval)
+                time.sleep(self.time_interval)
+            i = i + 1
 
         return all_movie_info
 
     def write_to_MongoDB(self, info: dict):
-        try:
-            # 尝试创建并保存一个新的Movie实例
-            new_movie = Movie(
-                code=info["番号"],
-                title=info["标题"],
-                actors=info["演员"],
-                tags=info["标签"],
-                uncensored=info["是否无码"],
-                magnet=info["磁链"],
-                url=info["网址"],
-            )
-            new_movie.save()
-        except NotUniqueError:
-            # 如果出现NotUniqueError，说明存在重复条目，此处可以记录日志或者简单跳过
-            print(f"出现重复条目{info['番号']}，已跳过。")
+        # 创建并保存一个新的Movie实例
+        new_movie = Movie(
+            code=info["番号"],
+            title=info["标题"],
+            actors=info["演员"],
+            tags=info["标签"],
+            uncensored=info["是否无码"],
+            magnet=info["磁链"],
+            url=info["网址"],
+        )
+        new_movie.save()
         return
+    
+    def check_movie_count(self,actor_url:str)->int:
+
+        base_url = "https://javdb.com"
+
+        # 获取html
+        response = requests.get(actor_url)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, "html.parser")
+        else:
+            print("未找到演员网址")
+
+        i = 1
+        # 拼接每页url并获取影片连接
+        while True:
+            page_url = f"{actor_url}?page={i}"
+            response = requests.get(page_url)
+            soup = BeautifulSoup(response.text, "html.parser")
+            if soup.find("div", class_="empty-message"):
+                break
+
+            # 获取影片列表中的所有条目
+            movie_container = soup.find("div", class_="movie-list h cols-4 vcols-8")
+            if not movie_container:
+                movie_container = soup.find("div", class_="movie-list h cols-4 vcols-5")
+
+            movie_list = movie_container.find_all("div", class_="item", recursive=False)
+
+            for movie in movie_list:
+                # 获取电影详情页面
+                movie_sub_url = movie.find("a")["href"]
+                movie_url = f"{base_url}{movie_sub_url}"
+
+                exist_movie = Movie.objects(url=movie_url).first()
+                if exist_movie==None:
+                    print(f"{movie_url} 在数据库中未找到")
+                    continue
+
+                time.sleep(self.time_interval)
+            i = i + 1

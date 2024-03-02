@@ -1,0 +1,12 @@
+from tools import Movie, Scraper
+import json
+from mongoengine import connect
+
+scraper = Scraper(
+    cookie="list_mode=h; theme=auto; _ym_uid=1695828592478619992; _ym_d=1695828592; over18=1; locale=zh; _ym_isad=1; _rucaptcha_session_id=81c6d8ff62a5f75aca51f944f51bf208; cf_clearance=NKnE3kiTsinNwu2HJ4fZ_PnB3SDwQ85MXhsJlYjnvjM-1709388266-1.0.1.1-bDrtCtZ51izP.Mq27NVMNAyGwIH8rC.Z8hXd0oqlMoDjvXa_G2pC1xuR34D51l2yLB_8CYq7tuWoYRp_jgrb9g; redirect_to=%2Fv%2FW1vx2Q; remember_me_token=eyJfcmFpbHMiOnsibWVzc2FnZSI6IklucFJUbTU1WWpKd1MzTjZPSGh6U25sUlFWcHZJZz09IiwiZXhwIjoiMjAyNC0wMy0wOVQxNDowNTozOS4wMDBaIiwicHVyIjoiY29va2llLnJlbWVtYmVyX21lX3Rva2VuIn19--7cfdbf601c1e19fbbd99a002f5633e239569618a; _jdb_session=EQXQR5oh0gRDLikzcP7BTNSrIj3aDrXp5E8Gtaw%2FrNYA8tj13nvbSXGcnNwA9cT8z1LYtlW7akCbXKj3BBGOmcdPb6fwpHvsmOTnDqAM54BhOTddi0TLHRD6jfgoUwAg1dIFc590urj0nx2GvtNZC0VwnqPXh7%2Fbh53mkdcMmT8AI0NAcfX2SZsGhgRzMUR5xs47%2FK4hbdjPR%2FCIGOgJ%2F%2FPLSZLd5tVR91jkNtMzppzNmmGSuw%2F7Yd3NTTMbG0l9HUbglyCLtavH%2F4UK6W2Sh9o%2BZhvZZuWhFm2T7tBYdqGY%2F0wdDT2GHDM4qrVSs4MuowMLKqFVB0GEF7Fkow65dwwfcG59FEL5Tfj%2BOlkZuHn9CgoS85in78twaTEpMThh8pflEg5PR8AMNPlMInHQM1KuQoZhEx09wIfbwYNKyEYgNI%2FsFlhjHZK6BS1J%2FVGRS%2BFLJntLj0b6%2BZbVRABAsl%2FFsg1Diq%2FH7MvmNI4As5hpjg%3D%3D--PPCaScsX6RH6Ypcg--pD06sJ8JMszKs8doz15g%2Fw%3D%3D"
+)
+
+connect(db="MyJavDB", host="mongodb://localhost:27017")
+
+info = scraper.get_one_movie_info("https://javdb.com/v/W1vx2Q", False)
+print(info)
