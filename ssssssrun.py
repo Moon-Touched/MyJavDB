@@ -1,4 +1,4 @@
-from tools import Movie, Scraper, Actor, Movie_Manager
+from lib.tools import Movie, Scraper, Actor, Movie_Manager
 import json
 from mongoengine import connect
 from pymongo import MongoClient
