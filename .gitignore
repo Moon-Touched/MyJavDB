@@ -6,4 +6,4 @@ qqq.py
 local.py
 ./json_version/
 */__pycache__/
-seetings.py
+settings.py
