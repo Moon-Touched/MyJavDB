@@ -2,7 +2,7 @@ from mongoengine import Document, BooleanField, StringField, IntField, ListField
 from pymongo.errors import ServerSelectionTimeoutError
 from bs4 import BeautifulSoup
 from typing import Union
-from error import CookieUnavailableError, UrlRequestFailedError, NoneObjectError
+from mylib.error import CookieUnavailableError, UrlRequestFailedError, NoneObjectError
 from webdav3.client import Client
 from pikpakapi import PikPakApi
 import json, re, os, requests, time, copy, sys, urllib.parse, shutil, cv2
@@ -131,7 +131,7 @@ class Scraper:
         actor_info["uncensored"] = uncensored
 
         self.write_actor(actor_info)
-
+        print(actor_info)
         return actor_info
 
     def get_favorite_actors_info(self, from_url: bool = True, is_update: bool = False) -> dict:
@@ -256,6 +256,7 @@ class Scraper:
         image = cv2.imread(f"{path}\\{movie_code}-fanart.jpg")
         cover = image[:, 425:]
         if cover.shape[0] > 0 and cover.shape[1] > 0:
+            print(cover.shape)
             cv2.imwrite(f"{path}\\{movie_code}-cover.jpg", cover)
 
         time.sleep(self.time_interval)
@@ -418,7 +419,7 @@ class Movie_Manager:
                 if title[i] == ":" and i > 2:
                     a, _, b = title.rpartition(":")
                     title = f"{a}{b}"
-            target_folder = os.path.join(self.movie_path, "capture done", ",".join(movie_info["actors"]), f"{code}{title}")
+            target_folder = os.path.join(self.movie_path, "capture done", f"{code} - {title}")
 
             if len(target_folder) > 80:
                 target_folder = target_folder[:80]
