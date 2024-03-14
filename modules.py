@@ -220,7 +220,6 @@ class MovieManager:
         files = []
         f = os.walk(path)
         root, movie_folders, file_names = next(f)
-
         for folder in movie_folders:
             large_files = []
             for root, dirs, file_names in os.walk(os.path.join(path, folder)):
@@ -235,6 +234,8 @@ class MovieManager:
                 new_path = os.path.join(path, folder, new_name)
                 os.renames(large_files[0]["file_path"], new_path)
                 files.append(new_path)
+            elif large_files == []:
+                continue
             else:
                 print(f"{large_files[0]['file_path']}有多个大文件")
         return files

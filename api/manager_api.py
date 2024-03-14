@@ -17,7 +17,7 @@ actor_collection = database.get_collection("actor")
 
 manager_api = APIRouter()
 templates = Jinja2Templates(directory="templates")
-manager = MovieManager(time_interval=1)
+manager = MovieManager(time_interval=5)
 
 
 class PathData(BaseModel):
@@ -130,7 +130,7 @@ async def websocket_endpoint(websocket: WebSocket):
         code, _, ext = file_name.rpartition(".")
         movie_info = await movie_collection.find_one({"code": code})
         if movie_info == None:
-            print("数据库中没有相应数据，开始抓取")
+            await websocket.send_text(f"数据库中没有{movie_info['code']}相应数据，开始抓取")
             movie_info = await manager.search_code_and_get_info(code)
             res = await movie_collection.insert_one(movie_info)
         res = await movie_collection.update_one({"code": code}, {"$set": {"local_existance": True}})
@@ -151,7 +151,7 @@ async def websocket_endpoint(websocket: WebSocket):
         await manager.get_one_movie_image(movie_url=movie_info["url"], movie_code=movie_info["code"], path=target_folder)
 
         os.rename(file, target_file)
-        await websocket.send_text(f"{target_file}整理完成")
+        await websocket.send_text(f"{file_name}整理完成")
     await websocket.send_text("done！！！！！！！！")
     return
 
@@ -168,11 +168,10 @@ async def get_filtered_magnet(request: Request):
 @manager_api.websocket("/get_filtered_magnet/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    data = await websocket.receive_text()
-    params = json.loads(data)
-    code = params.get("code")
-    actor = params.get("actor")
-    save_to_pikpak = params.get("save_to_pikpak")
+    data = await websocket.receive_json()
+    code = data["code"]
+    actor = data["actor"]
+    save_to_pikpak = data["save_to_pikpak"]
     if save_to_pikpak:
         client = PikPakApi(username=PIKPAK_Setting["username"], password=PIKPAK_Setting["password"])
         await client.login()
@@ -195,3 +194,35 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.send_text(m["magnet"])
     await websocket.send_text("done！！！！！！")
     return
+
+
+@manager_api.get("/get_one_actor_all_movie_info", summary="选择数据库中演员爬取所有影片信息", response_class=HTMLResponse)
+async def get_one_actor_all_movie_info(request: Request):
+    actors = actor_collection.find()
+    actor_list = []
+    async for a in actors:
+        actor_list.append(Actor(**a))
+    return templates.TemplateResponse("get_one_actor_all_movie_info.html", {"request": request, "actors": actor_list})
+
+
+@manager_api.websocket("/get_one_actor_all_movie_info/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    data = await websocket.receive_json()
+    actor_name = data["actor"]
+    actor = await actor_collection.find_one({"name": actor_name})
+    count = await movie_collection.count_documents({"actors": actor["second_name"]})
+    await websocket.send_text(f"{actor_name}共有{actor['total_movies']}部，数据库中已有{count}部")
+    if count < actor["total_movies"]:
+        movie_urls = actor["movie_urls"]
+        for url in movie_urls:
+            exist_movie = await movie_collection.find_one({"url": url})
+            if exist_movie:
+                continue
+            else:
+                movie_info = await manager.get_one_movie_info(url, actor["uncensored"])
+                movie_info = movie_info.model_dump()
+                res = await movie_collection.insert_one(movie_info)
+                await websocket.send_text(f"{movie_info['code']}已存储")
+    count = await movie_collection.count_documents({"actors": actor["second_name"]})
+    await websocket.send_text(f"{actor_name}共有{actor['total_movies']}部，数据库中已有{count}部")
