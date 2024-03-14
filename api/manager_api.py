@@ -170,18 +170,22 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     data = await websocket.receive_json()
     code = data["code"]
-    actor = data["actor"]
+    actor_name = data["actor"]
     save_to_pikpak = data["save_to_pikpak"]
-    if save_to_pikpak:
-        client = PikPakApi(username=PIKPAK_Setting["username"], password=PIKPAK_Setting["password"])
-        await client.login()
 
     filter_dict = {}
-    if actor != "":
-        filter_dict["actors"] = actor
+    if actor_name != "":
+        actor = await actor_collection.find_one({"name": actor_name})
+        second_name = actor["second_name"]
+        filter_dict["actors"] = second_name
+
     if code != "":
         filter_dict["code"] = code
     movies = movie_collection.find(filter_dict)
+
+    if save_to_pikpak:
+        client = PikPakApi(username=PIKPAK_Setting["username"], password=PIKPAK_Setting["password"])
+        await client.login()
 
     magnet_str = ""
     async for m in movies:
