@@ -33,13 +33,11 @@ async def manager_ini_page(request: Request):
 @manager_api.post("/api/update_local_path", summary="后台更新本地影片路径")
 async def update_local_path(local_path: PathData):
     movie_path = local_path.movie_path
-    print(movie_path)
     capture_path = local_path.capture_path
     if (not re.match(r"^[a-zA-Z]:\\.*$", movie_path)) or (not re.match(r"^[a-zA-Z]:\\.*$", capture_path)):
         raise HTTPException(status_code=400, detail="路径格式不正确")
     manager.movie_path = movie_path
     manager.capture_path = capture_path
-    print(manager.capture_path)
     return
 
 
@@ -215,7 +213,10 @@ async def websocket_endpoint(websocket: WebSocket):
     data = await websocket.receive_json()
     actor_name = data["actor"]
     actor = await actor_collection.find_one({"name": actor_name})
-    count = await movie_collection.count_documents({"actors": actor["second_name"]})
+    if actor_name[-4:] == "(無碼)":
+        count = await movie_collection.count_documents({"actors": actor["second_name"], "uncensored": True})
+    else:
+        count = await movie_collection.count_documents({"actors": actor["second_name"]})
     await websocket.send_text(f"{actor_name}共有{actor['total_movies']}部，数据库中已有{count}部")
     if count < actor["total_movies"]:
         movie_urls = actor["movie_urls"]
@@ -228,5 +229,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 movie_info = movie_info.model_dump()
                 res = await movie_collection.insert_one(movie_info)
                 await websocket.send_text(f"{movie_info['code']}已存储")
-    count = await movie_collection.count_documents({"actors": actor["second_name"]})
+    if actor_name[-4:] == "(無碼)":
+        count = await movie_collection.count_documents({"actors": actor["second_name"], "uncensored": True})
+    else:
+        count = await movie_collection.count_documents({"actors": actor["second_name"]})
     await websocket.send_text(f"{actor_name}共有{actor['total_movies']}部，数据库中已有{count}部")
